@@ -32,35 +32,96 @@ const initialHotelState = {
   totalRooms: 1,
 };
 
-// Datos de Ejemplo Dropdowns
-const chainItems = [
-  { id: 'chain-demo-1', text: 'Demo Chain Alpha' },
-  { id: 'chain-demo-2', text: 'Demo Chain Beta' },
-];
-const brandItems = [
-  { id: 'brand-demo-1', text: 'Demo Brand One' },
-  { id: 'brand-demo-2', text: 'Demo Brand Two' },
-];
-const pmsVendorItems = [
-  { id: 'pms-vendor-x', text: 'PMS Provider X' },
-  { id: 'pms-vendor-y', text: 'PMS Provider Y' },
-];
-const crsVendorItems = [
-  { id: 'crs-vendor-a', text: 'CRS Provider A' },
-  { id: 'crs-vendor-b', text: 'CRS Provider B' },
-];
-
 function HotelForm() {
   const { hotelId } = useParams();
   const isEditMode = !!hotelId;
   const navigate = useNavigate();
-
   const [formData, setFormData] = useState(initialHotelState);
   const [errors, setErrors] = useState({});
   const [loadingSubmit, setLoadingSubmit] = useState(false); // Submit loading
   const [submitStatus, setSubmitStatus] = useState(null);
   const [isLoadingData, setIsLoadingData] = useState(isEditMode); // Initial data loading
   const [initialLoadError, setInitialLoadError] = useState(null);
+  // State for dynamic dropdown options
+  const [chains, setChains] = useState([]);
+  const [brands, setBrands] = useState([]);
+  const [loadingChains, setLoadingChains] = useState(true);
+  const [loadingBrands, setLoadingBrands] = useState(false);
+  const [errorChains, setErrorChains] = useState(null);
+  const [errorBrands, setErrorBrands] = useState(null);
+
+  // Static PMS and CRS vendor options (no changes)
+  const pmsVendorItems = [
+    { id: 'pms-vendor-x', text: 'PMS Provider X' },
+    { id: 'pms-vendor-y', text: 'PMS Provider Y' },
+  ];
+  const crsVendorItems = [
+    { id: 'crs-vendor-a', text: 'CRS Provider A' },
+    { id: 'crs-vendor-b', text: 'CRS Provider B' },
+  ];
+
+  // --- Fetch Chains on Mount ---
+  useEffect(() => {
+    const fetchChains = async () => {
+      setLoadingChains(true);
+      setErrorChains(null);
+      try {
+        const response = await fetch('http://localhost:8090/api/chain');
+        if (!response.ok) {
+          throw new Error(
+            `HTTP Error ${response.status}: Could not load hotel chains`
+          );
+        }
+        const data = await response.json();
+        setChains(
+          data.map((chain) => ({ id: chain.chainId, text: chain.chainName }))
+        );
+      } catch (error) {
+        console.error('Error fetching hotel chains:', error);
+        setErrorChains(error.message || 'Failed to load hotel chains.');
+      } finally {
+        setLoadingChains(false);
+      }
+    };
+    fetchChains();
+  }, []);
+
+  // --- Fetch Brands when a Chain is Selected ---
+  useEffect(() => {
+    const fetchBrands = async (chainId) => {
+      if (!chainId) {
+        setBrands([]);
+        return;
+      }
+      setLoadingBrands(true);
+      setErrorBrands(null);
+      try {
+        const response = await fetch(
+          `http://localhost:8090/api/chain/${chainId}/brands`
+        );
+        if (!response.ok) {
+          throw new Error(
+            `HTTP Error ${response.status}: Could not load brands for chain ID ${chainId}`
+          );
+        }
+        const data = await response.json();
+        setBrands(
+          data.map((brand) => ({ id: brand.brandId, text: brand.brandName }))
+        );
+      } catch (error) {
+        console.error(`Error fetching brands for chain ID ${chainId}:`, error);
+        setErrorBrands(error.message || 'Failed to load hotel brands.');
+        setBrands([]);
+      } finally {
+        setLoadingBrands(false);
+      }
+    };
+    if (formData.hotelChain) {
+      fetchBrands(formData.hotelChain);
+    } else {
+      setBrands([]); // Clear brands if no chain is selected
+    }
+  }, [formData.hotelChain]);
 
   // --- Handlers ---
   const handleChange = (e) => {
@@ -71,10 +132,12 @@ function HotelForm() {
 
   const handleDropdownChange = (field, { selectedItem }) => {
     const value = selectedItem ? selectedItem.id : '';
-    // console.log(`Dropdown Change: Field=${field}, SelectedID=${value}`); // Keep logs if needed
-    // console.log('Selected Item Object:', selectedItem);
     setFormData((prev) => ({ ...prev, [field]: value }));
     if (errors[field]) setErrors((prev) => ({ ...prev, [field]: undefined }));
+    // Clear brands if chain changes
+    if (field === 'hotelChain') {
+      setFormData((prev) => ({ ...prev, hotelBrand: '' }));
+    }
   };
 
   const handleNumberInputChange = (fieldName, value) => {
@@ -91,10 +154,9 @@ function HotelForm() {
       setErrors((prev) => ({ ...prev, [fieldName]: undefined }));
   };
 
-  // --- useEffect para Carga de Datos (con logs de depuración) ---
+  // --- useEffect para Carga de Datos para Edición ---
   useEffect(() => {
     if (isEditMode && hotelId) {
-      console.log(`Edit mode. Fetching data for hotel ID: ${hotelId}`);
       setIsLoadingData(true);
       setInitialLoadError(null);
       setErrors({});
@@ -111,35 +173,16 @@ function HotelForm() {
             );
           }
           const fetchedData = await response.json();
-          console.log('Fetched data from API:', fetchedData); // DEBUG LOG 1
-
-          const chainId =
-            chainItems.find((item) => item.text === fetchedData.hotelChain)
-              ?.id || '';
-          const brandId =
-            brandItems.find((item) => item.text === fetchedData.hotelBrand)
-              ?.id || '';
-          const pmsVendorId =
-            pmsVendorItems.find((item) => item.text === fetchedData.pmsVendor)
-              ?.id || '';
-          const crsVendorId =
-            crsVendorItems.find((item) => item.text === fetchedData.crsVendor)
-              ?.id || '';
-
-          console.log('Dropdown Mapping:', {
-            /* ... DEBUG LOG 2 ... */
-          });
-
           setFormData({
-            hotelChain: chainId,
-            hotelBrand: brandId,
+            hotelChain: fetchedData.chainId?.toString() || '',
+            hotelBrand: fetchedData.brandId?.toString() || '',
             hotelName: fetchedData.hotelName || '',
             localPhone: fetchedData.localPhone || '',
-            cellPhone: fetchedData.celularPhone || '', // <<< VERIFICAR NOMBRE CAMPO API
-            pmsVendor: pmsVendorId,
+            cellPhone: fetchedData.celularPhone || '',
+            pmsVendor: fetchedData.pmsVendor || '',
             pmsHotelId: fetchedData.pmsHotelId?.toString() || '',
             pmsToken: fetchedData.pmsToken || '',
-            crsVendor: crsVendorId,
+            crsVendor: fetchedData.crsVendor || '',
             crsHotelId: fetchedData.crsHotelId?.toString() || '',
             crsToken: fetchedData.crsToken || '',
             disclaimer: fetchedData.disclaimer || '',
@@ -150,10 +193,7 @@ function HotelForm() {
           console.error('Error fetching hotel data for edit:', error);
           setInitialLoadError(error.message || 'Failed to load hotel data.');
         } finally {
-          setIsLoadingData(false); // <-- ASEGURARSE QUE ESTO SE EJECUTA
-          console.log(
-            'Finished loading data attempt, isLoadingData set to false'
-          ); // DEBUG LOG 3
+          setIsLoadingData(false);
         }
       };
       fetchHotelData();
@@ -183,7 +223,6 @@ function HotelForm() {
       totalRooms,
       crsHotelId,
     } = formData;
-
     if (!hotelChain) newErrors.hotelChain = 'Hotel chain is required.';
     if (!hotelBrand) newErrors.hotelBrand = 'Hotel brand is required.';
     if (!hotelName.trim()) newErrors.hotelName = 'Hotel name is required.';
@@ -217,7 +256,6 @@ function HotelForm() {
     if (crsHotelId?.toString().trim() && !/^\d+$/.test(crsHotelId.toString())) {
       newErrors.crsHotelId = 'CRS Hotel ID must be numeric if entered.';
     }
-
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -231,33 +269,19 @@ function HotelForm() {
       return;
     }
     setLoadingSubmit(true);
-
-    const selectedChainObject = chainItems.find(
-      (item) => item.id === formData.hotelChain
-    );
-    const selectedBrandObject = brandItems.find(
-      (item) => item.id === formData.hotelBrand
-    );
-    const selectedPmsVendorObject = pmsVendorItems.find(
-      (item) => item.id === formData.pmsVendor
-    );
-    const selectedCrsVendorObject = formData.crsVendor
-      ? crsVendorItems.find((item) => item.id === formData.crsVendor)
-      : null;
-
     const payload = {
-      hotelChain: selectedChainObject ? selectedChainObject.text : '',
-      hotelBrand: selectedBrandObject ? selectedBrandObject.text : '',
+      hotelChain: formData.hotelChain,
+      hotelBrand: formData.hotelBrand,
       hotelName: formData.hotelName,
       localPhone: formData.localPhone,
-      celularPhone: formData.cellPhone, // <--- VERIFICAR NOMBRE CAMPO BACKEND
-      pmsVendor: selectedPmsVendorObject ? selectedPmsVendorObject.text : '',
+      celularPhone: formData.cellPhone,
+      pmsVendor: formData.pmsVendor,
       pmsHotelId: formData.pmsHotelId
         ? parseInt(formData.pmsHotelId, 10)
         : null,
       pmsToken: formData.pmsToken,
       ...(formData.crsVendor && {
-        crsVendor: selectedCrsVendorObject ? selectedCrsVendorObject.text : '',
+        crsVendor: formData.crsVendor,
         crsHotelId: formData.crsHotelId
           ? parseInt(formData.crsHotelId, 10)
           : null,
@@ -267,12 +291,10 @@ function HotelForm() {
       totalFloors: formData.totalFloors,
       totalRooms: formData.totalRooms,
     };
-
     const apiUrl = isEditMode
       ? `http://localhost:8090/api/hotels/${hotelId}`
       : 'http://localhost:8090/api/hotels/';
     const method = isEditMode ? 'PUT' : 'POST';
-
     console.log(
       `Sending ${method} Payload to ${apiUrl}:`,
       JSON.stringify(payload, null, 2)
@@ -298,9 +320,15 @@ function HotelForm() {
       console.log(`Hotel ${isEditMode ? 'updated' : 'created'}:`, result);
       setSubmitStatus('success');
       if (method === 'POST' && result?.hotelId) {
-        navigate(`/hotel/${result.hotelId}`);
+        setTimeout(() => {
+          navigate(`/hotel/${result.hotelId}`);
+        }, 3000);
       } else if (method === 'PUT') {
-        setErrors({});
+        setTimeout(() => {
+          setFormData(initialHotelState); // Reiniciar todos los campos
+          setErrors({});
+          setSubmitStatus(null); // Limpiar el estado del mensaje
+        }, 3000);
       }
     } catch (error) {
       console.error('Error saving hotel:', error);
@@ -316,57 +344,58 @@ function HotelForm() {
 
   // --- Pre-cálculo para Dropdowns ---
   const currentChainItem =
-    chainItems.find((item) => item.id === formData.hotelChain) || null;
+    chains.find((item) => item.id === formData.hotelChain) || null;
   const currentBrandItem =
-    brandItems.find((item) => item.id === formData.hotelBrand) || null;
+    brands.find((item) => item.id === formData.hotelBrand) || null;
   const currentPmsVendorItem =
     pmsVendorItems.find((item) => item.id === formData.pmsVendor) || null;
   const currentCrsVendorItem =
     crsVendorItems.find((item) => item.id === formData.crsVendor) || null;
-
-  // --- LOGS DE DEPURACIÓN ---
-  // console.log('Calculating selectedItem for render (Chain):', { /* ... */ });
-  // console.log('Calculating selectedItem for render (Brand):', { /* ... */ });
-  console.log('FORM RENDER CHECK:', {
-    isLoadingData,
-    loadingSubmit,
-    shouldBeDisabled: isLoadingData || loadingSubmit,
-  });
-  // ---------------------------
 
   return (
     <div>
       <h2 style={{ marginBottom: '2rem', textAlign: 'left' }}>
         {isEditMode ? `Edit Hotel (ID: ${hotelId})` : 'Register New Hotel'}
       </h2>
-      {initialLoadError && <InlineNotification /* ... */ />}
+      {initialLoadError && (
+        <InlineNotification
+          kind="error"
+          title="Error Loading Data"
+          subtitle={initialLoadError}
+          onClose={() => setInitialLoadError(null)}
+          lowContrast
+          style={{ marginBottom: '1rem' }}
+        />
+      )}
       {isLoadingData && (
         <Loading description="Loading hotel data..." withOverlay={false} />
       )}
       {!initialLoadError && (
         <Form onSubmit={handleSubmit}>
           <fieldset
-            disabled={isLoadingData || loadingSubmit}
+            disabled={
+              isLoadingData || loadingSubmit || loadingChains || loadingBrands
+            }
             style={{ border: 'none', padding: 0, margin: 0 }}
           >
             <Grid>
-              {/* Columnas y Campos del Formulario */}
-              {/* Asegúrate de que los selectedItem usan las variables precalculadas */}
-              {/* Ejemplo: selectedItem={currentChainItem} */}
-
               {/* --- Sección General --- */}
               <Column lg={16} md={8} sm={4} style={{ marginBottom: '1rem' }}>
-                {' '}
-                <h4 /*...*/>General Hotel Information</h4>{' '}
+                <h4>General Hotel Information</h4>
               </Column>
               <Column lg={5} md={8} sm={4}>
-                {' '}
                 <Dropdown
                   id="hotelChain"
                   name="hotelChain"
                   titleText="Hotel Chain"
-                  label="Select..."
-                  items={chainItems}
+                  label={
+                    loadingChains
+                      ? 'Loading chains...'
+                      : errorChains
+                      ? 'Error loading chains'
+                      : 'Select...'
+                  }
+                  items={chains}
                   itemToString={(item) => (item ? item.text : '')}
                   onChange={(selection) =>
                     handleDropdownChange('hotelChain', selection)
@@ -374,17 +403,25 @@ function HotelForm() {
                   selectedItem={currentChainItem}
                   invalid={!!errors.hotelChain}
                   invalidText={errors.hotelChain}
+                  disabled={loadingChains || errorChains}
                   light
-                />{' '}
+                />
               </Column>
               <Column lg={5} md={8} sm={4}>
-                {' '}
                 <Dropdown
                   id="hotelBrand"
                   name="hotelBrand"
                   titleText="Hotel Brand"
-                  label="Select..."
-                  items={brandItems}
+                  label={
+                    loadingBrands
+                      ? 'Loading brands...'
+                      : errorBrands
+                      ? 'Error loading brands'
+                      : currentChainItem
+                      ? 'Select...'
+                      : 'Select a chain first'
+                  }
+                  items={brands}
                   itemToString={(item) => (item ? item.text : '')}
                   onChange={(selection) =>
                     handleDropdownChange('hotelBrand', selection)
@@ -392,11 +429,13 @@ function HotelForm() {
                   selectedItem={currentBrandItem}
                   invalid={!!errors.hotelBrand}
                   invalidText={errors.hotelBrand}
+                  disabled={
+                    loadingBrands || errorBrands || !formData.hotelChain
+                  }
                   light
-                />{' '}
+                />
               </Column>
               <Column lg={6} md={8} sm={4}>
-                {' '}
                 <TextInput
                   id="hotelName"
                   name="hotelName"
@@ -406,7 +445,7 @@ function HotelForm() {
                   invalid={!!errors.hotelName}
                   invalidText={errors.hotelName}
                   light
-                />{' '}
+                />
               </Column>
               {/* --- Sección Contacto --- */}
               <Column
@@ -415,11 +454,9 @@ function HotelForm() {
                 sm={4}
                 style={{ marginTop: '2rem', marginBottom: '1rem' }}
               >
-                {' '}
-                <h4 /*...*/>Contact Information</h4>{' '}
+                <h4>Contact Information</h4>
               </Column>
               <Column lg={8} md={8} sm={4}>
-                {' '}
                 <TextInput
                   id="localPhone"
                   name="localPhone"
@@ -430,10 +467,9 @@ function HotelForm() {
                   invalidText={errors.localPhone}
                   placeholder="(xxx) xxx-xxxx"
                   light
-                />{' '}
+                />
               </Column>
               <Column lg={8} md={8} sm={4}>
-                {' '}
                 <TextInput
                   id="cellPhone"
                   name="cellPhone"
@@ -445,7 +481,7 @@ function HotelForm() {
                   placeholder="(xxx) xxx-xxxx"
                   helperText="Include country code"
                   light
-                />{' '}
+                />
               </Column>
               {/* --- Sección PMS --- */}
               <Column
@@ -454,13 +490,9 @@ function HotelForm() {
                 sm={4}
                 style={{ marginTop: '2rem', marginBottom: '1rem' }}
               >
-                {' '}
-                <h4 /*...*/>
-                  Property Management System (PMS) Information
-                </h4>{' '}
+                <h4>Property Management System (PMS) Information</h4>
               </Column>
               <Column lg={5} md={8} sm={4}>
-                {' '}
                 <Dropdown
                   id="pmsVendor"
                   name="pmsVendor"
@@ -475,10 +507,9 @@ function HotelForm() {
                   invalid={!!errors.pmsVendor}
                   invalidText={errors.pmsVendor}
                   light
-                />{' '}
+                />
               </Column>
               <Column lg={5} md={8} sm={4}>
-                {' '}
                 <TextInput
                   id="pmsHotelId"
                   name="pmsHotelId"
@@ -488,10 +519,9 @@ function HotelForm() {
                   invalid={!!errors.pmsHotelId}
                   invalidText={errors.pmsHotelId}
                   light
-                />{' '}
+                />
               </Column>
               <Column lg={6} md={8} sm={4}>
-                {' '}
                 <TextInput
                   id="pmsToken"
                   name="pmsToken"
@@ -502,7 +532,7 @@ function HotelForm() {
                   invalid={!!errors.pmsToken}
                   invalidText={errors.pmsToken}
                   light
-                />{' '}
+                />
               </Column>
               {/* --- Sección CRS --- */}
               <Column
@@ -511,13 +541,9 @@ function HotelForm() {
                 sm={4}
                 style={{ marginTop: '2rem', marginBottom: '1rem' }}
               >
-                {' '}
-                <h4 /*...*/>
-                  Central Reservation System (CRS) Information
-                </h4>{' '}
+                <h4>Central Reservation System (CRS) Information</h4>
               </Column>
               <Column lg={5} md={8} sm={4}>
-                {' '}
                 <Dropdown
                   id="crsVendor"
                   name="crsVendor"
@@ -532,10 +558,9 @@ function HotelForm() {
                   invalid={!!errors.crsVendor}
                   invalidText={errors.crsVendor}
                   light
-                />{' '}
+                />
               </Column>
               <Column lg={5} md={8} sm={4}>
-                {' '}
                 <TextInput
                   id="crsHotelId"
                   name="crsHotelId"
@@ -545,10 +570,9 @@ function HotelForm() {
                   invalid={!!errors.crsHotelId}
                   invalidText={errors.crsHotelId}
                   light
-                />{' '}
+                />
               </Column>
               <Column lg={6} md={8} sm={4}>
-                {' '}
                 <TextInput
                   id="crsToken"
                   name="crsToken"
@@ -559,7 +583,7 @@ function HotelForm() {
                   invalid={!!errors.crsToken}
                   invalidText={errors.crsToken}
                   light
-                />{' '}
+                />
               </Column>
               {/* --- Sección Adicional --- */}
               <Column
@@ -568,11 +592,9 @@ function HotelForm() {
                 sm={4}
                 style={{ marginTop: '2rem', marginBottom: '1rem' }}
               >
-                {' '}
-                <h4 /*...*/>Additional Information</h4>{' '}
+                <h4>Additional Information</h4>
               </Column>
               <Column lg={8} md={8} sm={4}>
-                {' '}
                 <NumberInput
                   id="totalFloors"
                   name="totalFloors"
@@ -587,10 +609,9 @@ function HotelForm() {
                   invalidText={errors.totalFloors}
                   allowEmpty={false}
                   light
-                />{' '}
+                />
               </Column>
               <Column lg={8} md={8} sm={4}>
-                {' '}
                 <NumberInput
                   id="totalRooms"
                   name="totalRooms"
@@ -605,7 +626,7 @@ function HotelForm() {
                   invalidText={errors.totalRooms}
                   allowEmpty={false}
                   light
-                />{' '}
+                />
               </Column>
               {/* --- Sección Disclaimer --- */}
               <Column
@@ -614,11 +635,9 @@ function HotelForm() {
                 sm={4}
                 style={{ marginTop: '2rem', marginBottom: '1rem' }}
               >
-                {' '}
-                <h4 /*...*/>Disclaimer</h4>{' '}
+                <h4>Disclaimer</h4>
               </Column>
               <Column lg={16} md={8} sm={4}>
-                {' '}
                 <TextArea
                   id="disclaimer"
                   name="disclaimer"
@@ -629,9 +648,8 @@ function HotelForm() {
                   invalidText={errors.disclaimer}
                   rows={4}
                   light
-                />{' '}
+                />
               </Column>
-
               {/* Área de Submit */}
               <Column
                 lg={16}
@@ -643,13 +661,17 @@ function HotelForm() {
                   paddingTop: '1.5rem',
                 }}
               >
-                {/* ... Notificaciones y Botón ... */}
                 {/* Loading para submit */}
                 {loadingSubmit && (
                   <Loading description="Saving hotel..." withOverlay={false} />
                 )}
-
                 {/* --- NOTIFICACIÓN DE ÉXITO --- */}
+                {console.log(
+                  'loadingSubmit:',
+                  loadingSubmit,
+                  'submitStatus:',
+                  submitStatus
+                )}
                 {!loadingSubmit && submitStatus === 'success' && (
                   <InlineNotification
                     kind="success"
@@ -666,14 +688,32 @@ function HotelForm() {
                   />
                 )}
                 {/* ----------------------------- */}
-
                 {/* Notificación de Error */}
                 {!loadingSubmit && submitStatus === 'error' && (
-                  <InlineNotification /* ... */ />
+                  <InlineNotification
+                    kind="error"
+                    title="Save Error"
+                    subtitle={errors.api || 'An unexpected error occurred.'}
+                    onClose={() => {
+                      setSubmitStatus(null);
+                      setErrors((prev) => ({ ...prev, api: undefined }));
+                    }}
+                    lowContrast
+                    style={{ marginBottom: '1rem' }}
+                  />
                 )}
-
                 {/* Botón de Envío */}
-                <Button type="submit" disabled={isLoadingData || loadingSubmit}>
+                <Button
+                  type="submit"
+                  disabled={
+                    isLoadingData ||
+                    loadingSubmit ||
+                    loadingChains ||
+                    loadingBrands ||
+                    !formData.hotelChain ||
+                    !formData.hotelBrand
+                  }
+                >
                   {loadingSubmit
                     ? 'Saving...'
                     : isEditMode
@@ -685,7 +725,28 @@ function HotelForm() {
           </fieldset>
         </Form>
       )}
+      {errorChains && (
+        <InlineNotification
+          kind="error"
+          title="Error Loading Chains"
+          subtitle={errorChains}
+          onClose={() => setErrorChains(null)}
+          lowContrast
+          style={{ marginTop: '1rem' }}
+        />
+      )}
+      {errorBrands && (
+        <InlineNotification
+          kind="error"
+          title="Error Loading Brands"
+          subtitle={errorBrands}
+          onClose={() => setErrorBrands(null)}
+          lowContrast
+          style={{ marginTop: '1rem' }}
+        />
+      )}
     </div>
   );
 }
+
 export default HotelForm;
