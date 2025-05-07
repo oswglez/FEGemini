@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en" xml:lang="en">
+  <head>
+    <title>Silent Check SSO</title>
+  </head>
+  <body>
+    <script src="https://cdn.jsdelivr.net/npm/keycloak-js@21.1.3/dist/keycloak.min.js"></script>
+    <script>
+      const keycloak = Keycloak({
+        url: 'http://localhost:8080/',
+        realm: 'HotelApp',
+        clientId: 'expectra-fe-client',
+      });
+
+      keycloak.init({ onLoad: 'check-sso' }).then(() => {
+        window.close();
+      });
+    </script>
+  </body>
+</html>
